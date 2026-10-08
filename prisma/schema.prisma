@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  teamId    String   @unique // Slack team/workspace ID
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  conversations Conversation[]
+  workflows     Workflow[]
+}
+
+model User {
+  id          String   @id @default(uuid())
+  slackUserId String
+  workspaceId String
+  displayName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id])
+  messages  Message[]
+  workflows Workflow[]
+
+  @@unique([slackUserId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Conversation {
+  id          String   @id @default(uuid())
+  channelId   String
+  threadTs    String? // null = top-level conversation (no thread)
+  workspaceId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id])
+  messages    Message[]
+  jiraTickets JiraTicket[]
+
+  // A thread is uniquely identified by workspace + channel + threadTs
+  @@unique([workspaceId, channelId, threadTs])
+  @@index([channelId])
+  @@index([workspaceId])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  userId         String? // null for bot messages
+  content        String
+  role           String // 'user' | 'assistant'
+  slackTs        String // Slack message timestamp
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([slackTs])
+}
+
+/// Tracks processed Slack event IDs for idempotency.
+/// Slack can deliver the same event multiple times — this prevents duplicate processing.
+model ProcessedEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  processedAt DateTime @default(now())
+
+  @@index([processedAt])
+}
+
+model Workflow {
+  id          String    @id @default(uuid())
+  type        String // 'reminder' | 'follow_up'
+  status      String    @default("pending") // pending | completed | failed | cancelled
+  workspaceId String
+  creatorId   String
+  channelId   String
+  threadTs    String?
+  message     String
+  scheduledAt DateTime
+  executedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  creator   User      @relation(fields: [creatorId], references: [id])
+
+  @@index([status, scheduledAt])
+  @@index([workspaceId])
+  @@index([creatorId])
+}
+
+model JiraTicket {
+  id             String   @id @default(uuid())
+  ticketKey      String // e.g., "PROJ-123"
+  summary        String
+  description    String?
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+  @@index([ticketKey])
+}
