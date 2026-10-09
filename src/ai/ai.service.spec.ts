@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AiService } from './ai.service.js';
 import { LlmProvider } from './llm.provider.js';
+import { MessageRole } from '../common/types/index.js';
 
 describe('AiService', () => {
   let aiService: AiService;
@@ -32,7 +33,7 @@ describe('AiService', () => {
 
   describe('summarize', () => {
     it('should return a summary without triggering tools', async () => {
-      const mockContext = [{ role: 'user' as const, content: 'Hello' }];
+      const mockContext = [{ role: MessageRole.User, content: 'Hello' }];
       vi.spyOn(llmProvider, 'generateContent').mockResolvedValue({
         text: 'This is a summary.',
       });
@@ -51,7 +52,7 @@ describe('AiService', () => {
 
   describe('extractActionItems', () => {
     it('should return action items without triggering tools', async () => {
-      const mockContext = [{ role: 'user' as const, content: 'Fix the bug' }];
+      const mockContext = [{ role: MessageRole.User, content: 'Fix the bug' }];
       vi.spyOn(llmProvider, 'generateContent').mockResolvedValue({
         text: '- [ ] Fix bug',
       });
