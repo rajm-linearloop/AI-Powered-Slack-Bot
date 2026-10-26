@@ -2,7 +2,7 @@
 
 An enterprise-grade Slack assistant built with **NestJS, TypeScript, PostgreSQL, Prisma, Redis, BullMQ, and LLM tool calling**.
 
-This bot integrates directly with the Slack Events API to provide conversational AI, thread-aware context, conversation summarization, Jira ticket creation, and workflow automation.
+This bot integrates directly with the Slack Events API to provide autonomous bug Root Cause Analysis (RCA) via BetterBugs MCP, conversational thread triage, Jira ticket creation, slash commands, and delayed workflow automation.
 
 ---
 
@@ -11,7 +11,7 @@ This bot integrates directly with the Slack Events API to provide conversational
 The backend uses a modular architecture, separating Slack communication, AI processing, BetterBugs MCP telemetry ingestion, Jira ticketing, and persistence into isolated NestJS modules.
 
 - **API Layer**: NestJS REST endpoints and Slack webhook receivers with signature verification (`SlackSignatureGuard`) and rate limiting (`RateLimitGuard`).
-- **BetterBugs Integration**: Connects via Model Context Protocol (MCP) to fetch bug details, console errors, failed HTTP 4xx/5xx requests, and user click actions.
+- **BetterBugs Integration**: Connects via Model Context Protocol (MCP) to fetch bug details, console logs, failed HTTP 4xx/5xx requests, and user click actions.
 - **AI & RCA Engine**: Autonomous Root Cause Analysis (RCA) providing concise failure summaries, log evidence traces, suggested fixes, and executive Slack Block Kit cards.
 - **Persistence**: PostgreSQL (via Prisma ORM) for users, channels, thread message histories, and Jira ticket associations.
 - **Caching & Queueing**: Redis for sub-3s event idempotency (`SET NX`) and BullMQ for delayed workflow automation (e.g., Slack reminders).
@@ -31,33 +31,55 @@ flowchart TB
 ### Workflows
 
 1. **Autonomous RCA Pipeline:**
-   `Slack Session URL` ➡️ `Webhook Guard` ➡️ `Fast ACK (<3s)` ➡️ `BetterBugs MCP (Telemetry Fetch)` ➡️ `Security Sanitizer (PII/Token Scrubbing)` ➡️ `RCA Engine` ➡️ `Interactive Block Kit Card`
+   `Slack Session URL` -> `Webhook Guard` -> `Fast ACK (<3s)` -> `BetterBugs MCP (Telemetry Fetch)` -> `Security Sanitizer (PII/Token Scrubbing)` -> `RCA Engine` -> `Interactive Block Kit Card`
 2. **Conversational Triage & Jira Tool Calling:**
-   `Slack Thread Mention` ➡️ `AI Intent & Tool Call Detection` ➡️ `Jira REST API / BetterBugs Update` ➡️ `Save Ticket to PostgreSQL` ➡️ `Private Assignee Slack DM`
+   `Slack Thread Mention` -> `AI Intent & Tool Call Detection` -> `Jira REST API / BetterBugs Update` -> `Save Ticket to PostgreSQL` -> `Private Assignee Slack DM`
 3. **Background Job Automation (Reminders):**
-   `Schedule Request` ➡️ `BullMQ Delayed Queue (Redis)` ➡️ `Delayed Execution` ➡️ `Slack Thread Notification`
+   `Schedule Request` -> `BullMQ Delayed Queue (Redis)` -> `Delayed Execution` -> `Slack Thread Notification`
 
 ---
 
 ## Key Features
 
-1. **Intelligent Conversation**
-   - Supports Direct Messages, `@Bot` channel mentions, and thread replies.
-   - Maintains continuous thread context by retrieving recent message history from PostgreSQL.
-2. **Slash Commands**
-   - `/ask <question>`: Query the AI directly.
-   - `/summarize`: Generates a concise summary of the current thread.
-   - `/action-items`: Extracts tasks and action items from the discussion.
-3. **Jira Integration (Tool Calling)**
-   - The AI can automatically detect bug reports or task requests and trigger a structured JSON tool call.
-   - The backend validates the request and creates a live ticket via the Jira REST API, returning the ticket link to Slack.
-4. **Workflow Automation**
-   - Users can ask the bot to set reminders (e.g., `"Remind me to check this in 10 minutes"`).
-   - The backend schedules a delayed BullMQ job in Redis which fires back a Slack notification at the exact requested time.
-5. **Reliability & Security**
-   - **Idempotency**: Prevents processing duplicate Slack event retries using atomic Redis claims.
-   - **Rate Limiting**: Throttles excessive requests.
-   - **Multi-Workspace**: Dynamically partitions data and channels using Slack `team_id`.
+### 1. Autonomous Bug RCA & BetterBugs Ingestion
+- Detects BetterBugs session and share URLs (`https://app.betterbugs.io/sessions/...` or `/share/...`) posted in any channel or thread.
+- Fetches session metadata, console errors, network failures, and click traces via BetterBugs MCP.
+- Redacts authorization tokens, bearer headers, passwords, and sensitive PII through `TelemetrySanitizer` before model submission.
+- Generates structured Root Cause Analysis (RCA) and renders an interactive Slack Block Kit card.
+- RCA card buttons include:
+  - **Create Jira Ticket**: Creates a Jira ticket pre-populated with bug details and links back to the Slack thread.
+  - **Change Status**: Updates the bug status and priority in BetterBugs.
+  - **Assign to Me**: Assigns the bug to the clicking user and sends a direct Slack confirmation DM.
+  - **Set Reminder**: Schedules a BullMQ reminder for follow-up.
+
+### 2. Conversational Triage & Thread Memory
+- Maintains continuous thread context by retrieving recent message history from PostgreSQL.
+- Supports natural language commands in threads and direct messages:
+  - `"Assign this bug to @Alex"`
+  - `"Add comment: Verified fix on staging"`
+  - `"Create a Jira ticket for this"`
+  - `"Update status to IN_PROGRESS and priority to HIGH"`
+  - `"Remind me to check this in 10 minutes"`
+
+### 3. Slash Commands
+- `/ask <question>`: Query the AI directly with conversational context.
+- `/help`: Display a quick-reference guide of available commands and conversational syntax.
+- `/jira <summary>`: Create a Jira task directly from thread or bug context.
+- `/assign <@user>`: Assign the current bug report to a teammate.
+- `/comment <note>`: Add a note or triage comment to the BetterBugs report.
+- `/summarize`: Generates a concise summary of the current thread.
+- `/action-items`: Extracts actionable tasks from the discussion.
+
+### 4. Jira Integration (Tool Calling)
+- Detects bug reports or task requests via LLM tool calling.
+- Validates requests and creates live tickets via Jira REST API using Atlassian Document Format (ADF).
+- Saves ticket mapping to PostgreSQL and posts direct links to Slack.
+
+### 5. Reliability & Security
+- **Idempotency**: Prevents processing duplicate Slack event retries using atomic Redis claims (`SET NX`).
+- **Signature Verification**: Verifies Slack signing secret on all incoming webhook requests.
+- **Rate Limiting**: Throttles abusive requests per user/IP using Redis sliding window.
+- **Multi-Workspace**: Dynamically partitions data and channels using Slack `team_id`.
 
 ---
 
@@ -66,7 +88,7 @@ flowchart TB
 ### 1. Prerequisites
 - Node.js (v24+)
 - Docker & Docker Compose
-- ngrok (for Slack event tunneling)
+- ngrok (for Slack event tunneling during local development)
 
 ### 2. Environment Configuration
 Create a `.env` file in the root directory:
@@ -87,15 +109,24 @@ REDIS_PORT="6379"
 SLACK_BOT_TOKEN="xoxb-your-bot-token"
 SLACK_SIGNING_SECRET="your-signing-secret"
 
-# AI
+# AI (OpenRouter)
 OPENROUTER_API_KEY="your-llm-api-key"
+AI_MODEL="openai/gpt-4o-mini"
 AI_MAX_CONTEXT_MESSAGES="20"
 
-# Jira Integration
+# Jira Integration (Optional)
 JIRA_BASE_URL="https://your-domain.atlassian.net"
 JIRA_EMAIL="your-email@example.com"
 JIRA_API_TOKEN="your-jira-token"
 JIRA_PROJECT_KEY="PROJ"
+
+# BetterBugs MCP Integration
+BETTERBUGS_MCP_URL="http://localhost:3001/mcp"
+BETTERBUGS_MCP_TOKEN=""
+
+# Rate Limiting
+RATE_LIMIT_TTL="60"
+RATE_LIMIT_MAX="20"
 ```
 
 ### 3. Start Infrastructure
@@ -111,25 +142,33 @@ npx prisma generate
 npx prisma db push
 ```
 
-### 5. Start the Application
+### 5. Start BetterBugs MCP Mock Server (Local Development)
+If you do not have access to a remote BetterBugs MCP server, start the included local MCP mock server in a separate terminal:
+```bash
+npm run mock:mcp
+```
+This runs an MCP Streamable HTTP server on `http://localhost:3001/mcp` simulating all 7 BetterBugs MCP tools (`getBugDetails`, `getBugLogs`, `getScreenshot`, `updateBugDetails`, `listBugs`, `recordingLink`, `listProjects`).
+
+### 6. Start the Application
 Install dependencies and run the NestJS server:
 ```bash
 npm install
 npm run start:dev
 ```
 
-### 6. Connect Slack (ngrok)
+### 7. Connect Slack (ngrok)
 Expose your local server to the internet so Slack can send events:
 ```bash
 ngrok http 3000
 ```
-Update your Slack App's **Event Subscriptions** and **Slash Commands** URLs with your new ngrok address (e.g., `https://<your-ngrok-url>.ngrok-free.app/slack/events`).
+Update your Slack App configuration:
+- **Event Subscriptions URL**: `https://<your-ngrok-url>.ngrok-free.app/slack/events`
+- **Interactivity & Shortcuts Request URL**: `https://<your-ngrok-url>.ngrok-free.app/slack/actions`
+- **Slash Commands Request URLs**: `https://<your-ngrok-url>.ngrok-free.app/slack/commands`
 
 ---
 
-## Testing
-
-The project includes unit tests for business logic, mocking external dependencies (LLM, Jira, Slack).
+## Testing & Quality Verification
 
 ```bash
 # Run unit tests
@@ -137,13 +176,24 @@ npm run test
 
 # Run tests with coverage
 npm run test:cov
+
+# Run end-to-end tests
+npm run test:e2e
+
+# Run linter
+npm run lint
+
+# Build production bundle
+npm run build
 ```
+
+---
 
 ## CI/CD Pipeline
 
-This repository uses GitHub Actions (`.github/workflows/ci.yml`). On every push to `main`, the pipeline automatically:
+This repository uses GitHub Actions (`.github/workflows/ci.yml`). On every push to `main` or pull request, the pipeline automatically:
 1. Provisions temporary PostgreSQL and Redis instances.
-2. Generates the Prisma schema.
-3. Runs the Oxlint linter.
-4. Executes the Vitest test suite.
+2. Generates the Prisma schema and syncs the database.
+3. Runs the Oxlint type-aware linter.
+4. Executes the full Vitest unit test suite.
 5. Builds the production NestJS bundle.
