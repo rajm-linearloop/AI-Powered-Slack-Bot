@@ -43,6 +43,13 @@ export class JiraService {
     }
   }
 
+  getTicketUrl(ticketKey: string): string {
+    if (this.baseUrl && this.isConfigured) {
+      return `${this.baseUrl}/browse/${ticketKey}`;
+    }
+    return '';
+  }
+
   async createTicket(params: CreateJiraTicketParams) {
     this.logger.log(`Creating Jira ticket: ${params.summary}`);
 
@@ -108,13 +115,11 @@ export class JiraService {
     }
 
     // Resolve conversation to link the ticket
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.conversation.findFirst({
       where: {
-        workspaceId_channelId_threadTs: {
-          workspaceId: params.conversationWorkspaceId,
-          channelId: params.conversationChannelId,
-          threadTs: params.conversationThreadTs ?? null,
-        },
+        workspaceId: params.conversationWorkspaceId,
+        channelId: params.conversationChannelId,
+        threadTs: params.conversationThreadTs || null,
       },
     });
 

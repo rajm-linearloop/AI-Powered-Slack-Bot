@@ -16,11 +16,14 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  it('/health (GET)', () => {
     return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect('Hello World!');
+      .get('/health')
+      .expect((res) => {
+        expect([200, 503]).toContain(res.status);
+        expect(res.body).toHaveProperty('status');
+        expect(res.body).toHaveProperty('dependencies');
+      });
   });
 
   afterEach(async () => {

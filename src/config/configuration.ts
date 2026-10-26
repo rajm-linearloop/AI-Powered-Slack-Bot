@@ -18,6 +18,7 @@ export default () => ({
 
   ai: {
     apiKey: process.env.OPENROUTER_API_KEY,
+    model: process.env.AI_MODEL ?? 'openai/gpt-4o-mini',
     maxContextMessages: parseInt(
       process.env.AI_MAX_CONTEXT_MESSAGES ?? '20',
       10,
@@ -29,6 +30,11 @@ export default () => ({
     email: process.env.JIRA_EMAIL ?? '',
     apiToken: process.env.JIRA_API_TOKEN ?? '',
     projectKey: process.env.JIRA_PROJECT_KEY ?? '',
+  },
+
+  betterbugs: {
+    mcpUrl: process.env.BETTERBUGS_MCP_URL ?? 'http://localhost:3001/mcp',
+    mcpToken: process.env.BETTERBUGS_MCP_TOKEN ?? '',
   },
 
   rateLimit: {

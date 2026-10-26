@@ -39,7 +39,7 @@ export class WorkflowProcessor extends WorkerHost {
 
     try {
       // Send reminder to Slack
-      const message = `⏰ *Reminder:* <@${workflow.creator.slackUserId}> asked me to remind you:\n\n${workflow.message}`;
+      const message = `*Reminder:* <@${workflow.creator.slackUserId}> asked me to remind you:\n\n${workflow.message}`;
       await this.slackApi.sendMessage(
         workflow.channelId,
         message,

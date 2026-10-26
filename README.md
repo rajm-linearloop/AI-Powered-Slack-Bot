@@ -8,31 +8,34 @@ This bot integrates directly with the Slack Events API to provide conversational
 
 ## System Architecture
 
-The backend uses a modular monolith architecture, separating Slack communication, AI processing, persistence, and external integrations into isolated NestJS modules.
+The backend uses a modular architecture, separating Slack communication, AI processing, BetterBugs MCP telemetry ingestion, Jira ticketing, and persistence into isolated NestJS modules.
 
-- **API Layer**: NestJS REST endpoints and Slack webhook receivers with signature verification.
-- **Persistence**: PostgreSQL (via Prisma ORM) for users, channels, message history, and Jira ticket associations.
-- **Caching & Queueing**: Redis is used for event idempotency (`SET NX`) and BullMQ for delayed workflow automation (e.g., Slack reminders).
-- **AI Processing**: LLM integrations with structured tool calling for executing external services securely.
+- **API Layer**: NestJS REST endpoints and Slack webhook receivers with signature verification (`SlackSignatureGuard`) and rate limiting (`RateLimitGuard`).
+- **BetterBugs Integration**: Connects via Model Context Protocol (MCP) to fetch bug details, console errors, failed HTTP 4xx/5xx requests, and user click actions.
+- **AI & RCA Engine**: Autonomous Root Cause Analysis (RCA) providing concise failure summaries, log evidence traces, suggested fixes, and executive Slack Block Kit cards.
+- **Persistence**: PostgreSQL (via Prisma ORM) for users, channels, thread message histories, and Jira ticket associations.
+- **Caching & Queueing**: Redis for sub-3s event idempotency (`SET NX`) and BullMQ for delayed workflow automation (e.g., Slack reminders).
+- **Atlassian Jira Integration**: Formats Atlassian Document Format (ADF) payloads to file real Jira tasks directly from Slack threads.
 
 ```mermaid
 flowchart TB
-    Slack["Slack Events API"] --> NestJS["NestJS Backend"]
+    Slack["Slack Events & Block Kit"] --> NestJS["NestJS Backend"]
+    NestJS --> BetterBugs["BetterBugs MCP Server"]
+    NestJS --> LLM["LLM Provider (OpenRouter)"]
+    NestJS --> Jira["Jira REST API"]
     NestJS --> PostgreSQL["PostgreSQL (Prisma)"]
     NestJS --> Redis["Redis (Cache/Idempotency)"]
     NestJS --> BullMQ["BullMQ (Background Jobs)"]
-    NestJS --> LLM["LLM Provider (OpenRouter/Gemini)"]
-    NestJS --> Jira["Jira REST API"]
 ```
 
 ### Workflows
 
-1. **End-to-End Event Pipeline:**
-   `Slack API` ➡️ `Webhook Guard (Signature Validation)` ➡️ `Redis (Idempotency Check)` ➡️ `PostgreSQL (Persist User Message & Retrieve Thread Context)` ➡️ `AI Module` ➡️ `Slack Response`
-2. **External Tool Calling (Jira):**
-   `AI Module detects intent` ➡️ `Generates Structured JSON Args` ➡️ `Jira Service Validates Args` ➡️ `POST Request to Jira REST API` ➡️ `Save Ticket ID to PostgreSQL` ➡️ `Send Slack Confirmation`
+1. **Autonomous RCA Pipeline:**
+   `Slack Session URL` ➡️ `Webhook Guard` ➡️ `Fast ACK (<3s)` ➡️ `BetterBugs MCP (Telemetry Fetch)` ➡️ `Security Sanitizer (PII/Token Scrubbing)` ➡️ `RCA Engine` ➡️ `Interactive Block Kit Card`
+2. **Conversational Triage & Jira Tool Calling:**
+   `Slack Thread Mention` ➡️ `AI Intent & Tool Call Detection` ➡️ `Jira REST API / BetterBugs Update` ➡️ `Save Ticket to PostgreSQL` ➡️ `Private Assignee Slack DM`
 3. **Background Job Automation (Reminders):**
-   `AI Module detects schedule intent` ➡️ `Workflow Service parses datetime` ➡️ `Saves to PostgreSQL` ➡️ `Pushes delayed job to BullMQ/Redis` ➡️ `Worker fires at requested time` ➡️ `Sends Slack DM`
+   `Schedule Request` ➡️ `BullMQ Delayed Queue (Redis)` ➡️ `Delayed Execution` ➡️ `Slack Thread Notification`
 
 ---
 

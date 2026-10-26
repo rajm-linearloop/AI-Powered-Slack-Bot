@@ -63,12 +63,13 @@ export class SlackSignatureGuard implements CanActivate {
         .update(sigBaseString)
         .digest('hex');
 
-    const isValid = timingSafeEqual(
-      Buffer.from(mySignature),
-      Buffer.from(slackSignature),
-    );
+    const mySigBuffer = Buffer.from(mySignature, 'utf8');
+    const slackSigBuffer = Buffer.from(slackSignature, 'utf8');
 
-    if (!isValid) {
+    if (
+      mySigBuffer.length !== slackSigBuffer.length ||
+      !timingSafeEqual(mySigBuffer, slackSigBuffer)
+    ) {
       this.logger.warn('Invalid Slack signature');
       throw new UnauthorizedException('Invalid Slack signature');
     }

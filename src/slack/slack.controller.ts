@@ -47,4 +47,30 @@ export class SlackController {
 
     return 'ok';
   }
+
+  /**
+   * Slack Interactivity webhook.
+   *
+   * Receives button clicks from Block Kit cards (e.g., Create Jira Task, Assign to Me).
+   */
+  @Post('interactions')
+  @UseGuards(SlackSignatureGuard, RateLimitGuard)
+  @HttpCode(200)
+  handleInteraction(@Body() body: any): string {
+    let payload = body;
+    if (typeof body?.payload === 'string') {
+      try {
+        payload = JSON.parse(body.payload);
+      } catch (e) {
+        this.logger.error('Failed to parse interaction payload', e);
+        return 'ok';
+      }
+    }
+
+    if (payload?.type === 'block_actions') {
+      void this.slackEventService.processInteraction(payload);
+    }
+
+    return 'ok';
+  }
 }

@@ -11,16 +11,19 @@ import {
 export class LlmProvider {
   private readonly logger = new Logger(LlmProvider.name);
   private readonly openai: OpenAI;
-  // Use a good open-source or free model on OpenRouter, like Meta's Llama 3 or Google's Gemini Flash via OpenRouter
-  // google/gemini-2.5-flash is extremely fast, cheap, and supports tool calling on OpenRouter
-  private readonly modelName = 'google/gemini-2.5-flash';
+  private readonly modelName: string;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.getOrThrow<string>('ai.apiKey');
+    this.modelName =
+      this.configService.get<string>('ai.model') ||
+      process.env.AI_MODEL ||
+      'openai/gpt-4o-mini';
     this.openai = new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
       apiKey: apiKey,
     });
+    this.logger.log(`LlmProvider initialized with model: ${this.modelName}`);
   }
 
   /**
@@ -49,7 +52,7 @@ export class LlmProvider {
     const requestOptions: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
       model: this.modelName,
       messages,
-      max_tokens: 4000,
+      max_tokens: 1000,
     };
 
     if (useTools) {
@@ -58,8 +61,12 @@ export class LlmProvider {
     }
 
     try {
+      const startTime = Date.now();
       const response =
         await this.openai.chat.completions.create(requestOptions);
+      this.logger.debug(
+        `OpenRouter response received in ${Date.now() - startTime}ms`,
+      );
       return this.parseResponse(response);
     } catch (error) {
       this.logger.error(
@@ -124,8 +131,101 @@ export class LlmProvider {
                 type: 'string',
                 description: 'A detailed description of the issue or task.',
               },
+              priority: {
+                type: 'string',
+                enum: ['Lowest', 'Low', 'Medium', 'High', 'Highest'],
+                description: 'Priority of the Jira ticket.',
+              },
+              bugId: {
+                type: 'string',
+                description: 'The BetterBugs bug or session ID if available from context.',
+              },
             },
             required: ['summary', 'description'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'assign_bug',
+          description:
+            'Assigns the BetterBugs report or task to a team member by email, name, or Slack user mention.',
+          parameters: {
+            type: 'object',
+            properties: {
+              bugId: {
+                type: 'string',
+                description: 'The BetterBugs bug or session ID (e.g., bug-abc123). If not provided, infer from thread context.',
+              },
+              assignee: {
+                type: 'string',
+                description: 'Name or email of the teammate to assign the bug to.',
+              },
+              slackUserId: {
+                type: 'string',
+                description: 'Slack user ID if the user was mentioned (e.g., U12345678).',
+              },
+              comment: {
+                type: 'string',
+                description: 'Optional note or assignment reason.',
+              },
+            },
+            required: ['assignee'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'add_bug_comment',
+          description:
+            'Adds a comment, reproduction note, or message to the BetterBugs report, optionally mentioning team members.',
+          parameters: {
+            type: 'object',
+            properties: {
+              bugId: {
+                type: 'string',
+                description: 'The BetterBugs bug or session ID. If not provided, infer from thread context.',
+              },
+              comment: {
+                type: 'string',
+                description: 'The comment or note to attach to the bug report.',
+              },
+              mentions: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Emails, names, or Slack IDs of teammates to mention in the comment.',
+              },
+            },
+            required: ['comment'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'update_bug_status',
+          description:
+            'Updates the status (OPEN, IN_PROGRESS, CLOSED) or priority (LOW, MEDIUM, HIGH, URGENT) of the BetterBugs report.',
+          parameters: {
+            type: 'object',
+            properties: {
+              bugId: {
+                type: 'string',
+                description: 'The BetterBugs bug or session ID. If not provided, infer from thread context.',
+              },
+              status: {
+                type: 'string',
+                enum: ['OPEN', 'IN_PROGRESS', 'CLOSED'],
+                description: 'The new status of the bug.',
+              },
+              priority: {
+                type: 'string',
+                enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'],
+                description: 'The new priority of the bug.',
+              },
+            },
           },
         },
       },

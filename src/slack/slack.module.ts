@@ -6,6 +6,7 @@ import { SlackApiService } from './slack-api.service.js';
 import { ConversationsModule } from '../conversations/conversations.module.js';
 import { AiModule } from '../ai/ai.module.js';
 import { JiraModule } from '../integrations/jira/jira.module.js';
+import { BetterBugsModule } from '../integrations/betterbugs/betterbugs.module.js';
 import { WorkflowsModule } from '../workflows/workflows.module.js';
 import { DatabaseModule } from '../database/database.module.js';
 
@@ -13,6 +14,7 @@ import { DatabaseModule } from '../database/database.module.js';
   imports: [
     ConfigModule,
     DatabaseModule,
+    BetterBugsModule,
     forwardRef(() => ConversationsModule),
     forwardRef(() => AiModule),
     forwardRef(() => JiraModule),

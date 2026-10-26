@@ -11,6 +11,7 @@ import { AiModule } from './ai/ai.module.js';
 import { ConversationsModule } from './conversations/conversations.module.js';
 import { CommandsModule } from './commands/commands.module.js';
 import { JiraModule } from './integrations/jira/jira.module.js';
+import { BetterBugsModule } from './integrations/betterbugs/betterbugs.module.js';
 import { WorkflowsModule } from './workflows/workflows.module.js';
 import { HealthModule } from './health/health.module.js';
 
@@ -31,7 +32,9 @@ import { HealthModule } from './health/health.module.js';
         connection: {
           host: configService.getOrThrow<string>('redis.host'),
           port: configService.getOrThrow<number>('redis.port'),
-          maxRetriesPerRequest: 3,
+          maxRetriesPerRequest: null,
+          retryStrategy: (times: number) =>
+            times > 3 ? null : Math.min(times * 200, 1000),
         },
       }),
     }),
@@ -43,6 +46,7 @@ import { HealthModule } from './health/health.module.js';
     ConversationsModule,
     CommandsModule,
     JiraModule,
+    BetterBugsModule,
     WorkflowsModule,
     HealthModule,
   ],

@@ -1,11 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import { PrismaService } from '../database/prisma.service.js';
 import { ContextMessage, MessageRole } from '../common/types/index.js';
 
 @Injectable()
-export class ConversationService {
+export class ConversationService implements OnModuleDestroy {
   private readonly logger = new Logger(ConversationService.name);
   private readonly maxContextMessages: number;
   private readonly redis: Redis;
@@ -22,6 +22,13 @@ export class ConversationService {
       port: this.configService.getOrThrow<number>('redis.port'),
       maxRetriesPerRequest: 3,
     });
+    this.redis?.on?.('error', (err: any) => {
+      this.logger.warn(`Redis client event: ${err.message}`);
+    });
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.redis.quit().catch(() => {});
   }
 
   async findOrCreateWorkspace(teamId: string) {
@@ -71,8 +78,8 @@ export class ConversationService {
     channelId: string,
     threadTs?: string,
   ) {
-    // Treat threadTs as null if undefined to match Prisma schema
-    const actualThreadTs = threadTs ?? null;
+    // Treat threadTs as null if undefined or empty string to match Prisma schema
+    const actualThreadTs = threadTs || null;
     let conversation = await this.prisma.conversation.findFirst({
       where: {
         workspaceId,
@@ -96,6 +103,22 @@ export class ConversationService {
   async getLatestConversation(channelId: string) {
     return this.prisma.conversation.findFirst({
       where: { channelId },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async findConversationByBugId(channelId: string, bugId: string) {
+    return this.prisma.conversation.findFirst({
+      where: {
+        channelId,
+        messages: {
+          some: {
+            content: {
+              contains: bugId,
+            },
+          },
+        },
+      },
       orderBy: { updatedAt: 'desc' },
     });
   }

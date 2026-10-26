@@ -58,6 +58,34 @@ export type AiToolCall =
       args: {
         summary: string;
         description: string;
+        bugId?: string;
+        priority?: string;
+      };
+    }
+  | {
+      tool: 'assign_bug';
+      args: {
+        bugId?: string;
+        assignee: string;
+        slackUserId?: string;
+        priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+        comment?: string;
+      };
+    }
+  | {
+      tool: 'add_bug_comment';
+      args: {
+        bugId?: string;
+        comment: string;
+        mentions?: string[];
+      };
+    }
+  | {
+      tool: 'update_bug_status';
+      args: {
+        bugId?: string;
+        status?: 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
+        priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
       };
     }
   | {
